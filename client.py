@@ -20,7 +20,7 @@ class FileClient:
     def receive_updates(self):
         while self.connected:
             try:
-                data = self.client.recv(1024).decode('utf-8')
+                data = self.client.recv(4096).decode('utf-8')
                 if data:
                     message = json.loads(data)
                     if message['type'] == 'files_update':
@@ -40,7 +40,7 @@ class FileClient:
                     elif message['type'] == 'client_disconnected':
                         disconnected_client = message['data']['username']
                         print(f"\nClient {disconnected_client} has disconnected.")
-                    elif message['type'] == 'file_request':
+                    elif message['type'] == 'file_transfer_request':
                         filename = message['filename']
                         requester = message['from']
                         file_path = os.path.join(self.directory, filename)
@@ -70,7 +70,8 @@ class FileClient:
                         filename = message['data']['filename']
                         print(f"\n{username} has deleted the file: {filename}")
             except Exception as e:
-                print(f"Error in receive_updates: {e}")
+                if self.connected:
+                    print(f"Error in receive_updates: {e}")
                 break
 
     def send_commands(self):
@@ -79,6 +80,7 @@ class FileClient:
             if command.lower() == 'exit':
                 self.client.send(json.dumps({'type': 'disconnect'}).encode('utf-8'))
                 self.client.close()
+                self.connected = False
                 break
             elif command.lower() == 'request':
                 owner = input("Enter the owner of the file: ")
@@ -89,7 +91,7 @@ class FileClient:
                     'filename': filename
                 }).encode('utf-8'))
             elif command.lower() == 'directory':
-                print("\nYour published files:")
+                print("\nYour files:")
                 for file in self.get_file_list():
                     print(f" - {file}")
                 print("\nFiles received:")
@@ -145,7 +147,7 @@ class FileClient:
         observer.start()
 
         try:
-            while True:
+            while self.connected:
                 pass
         except KeyboardInterrupt:
             observer.stop()

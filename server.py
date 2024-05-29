@@ -64,7 +64,7 @@ class FileServer:
     def handle_client(self, client_socket, address):
         username = None
         try:
-            data = client_socket.recv(1024).decode('utf-8')
+            data = client_socket.recv(4096).decode('utf-8')
             auth_data = json.loads(data)
             username = auth_data['username']
             client_files = auth_data['files']
@@ -80,7 +80,7 @@ class FileServer:
             self.broadcast_files(exclude_username=username)
 
             while True:
-                data = client_socket.recv(1024).decode('utf-8')
+                data = client_socket.recv(4096).decode('utf-8')
                 if not data:
                     break
                 message = json.loads(data)
@@ -89,7 +89,7 @@ class FileServer:
                 elif message['type'] == 'request_file':
                     requested_client = message['owner']
                     requested_file = message['filename']
-                    requesting_client = username 
+                    requesting_client = username
                     if requested_client in self.clients:
                         self.clients[requested_client].send(json.dumps({
                             'type': 'file_transfer_request',
@@ -126,9 +126,9 @@ class FileServer:
             if username:
                 del self.clients[username]
                 del self.files[username]
-                self.notify_client_disconnection(username) 
+                self.notify_client_disconnection(username)
                 
-                self.broadcast_files() 
+                self.broadcast_files()
                 
             client_socket.close()
 
