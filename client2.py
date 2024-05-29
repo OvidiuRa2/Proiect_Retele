@@ -21,6 +21,13 @@ class FileClient:
         while self.connected:
             try:
                 data = self.client.recv(4096).decode('utf-8')
+                if not data:
+                    break  # Ieșiți din buclă dacă nu există date
+                message = json.loads(data)
+                if message['type'] == 'disconnected':
+                    self.connected = False  # Setează conectatul pe False
+                    print("Disconnected from server.")
+                    break  
                 if data:
                     message = json.loads(data)
                     if message['type'] == 'files_update':
