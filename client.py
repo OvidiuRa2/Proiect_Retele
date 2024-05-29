@@ -12,7 +12,7 @@ class FileClient:
         self.client = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.client.connect((host, port))
         self.client_files = []
-        self.connected = True 
+        self.connected = True
 
     def get_file_list(self):
         return [f for f in os.listdir(self.directory) if os.path.isfile(os.path.join(self.directory, f))]
@@ -40,32 +40,19 @@ class FileClient:
                     elif message['type'] == 'client_disconnected':
                         disconnected_client = message['data']['username']
                         print(f"\nClient {disconnected_client} has disconnected.")
-                       
-                        if disconnected_client in self.client_files:
-                            del self.client_files[disconnected_client]
-                    elif message['type'] == 'file_transfer_request':
+                    elif message['type'] == 'file_request':
                         filename = message['filename']
                         requester = message['from']
-                        
-                        print(f"\n{requester} has requested the file: {filename}")
-                        # confirm = input("Do you want to send this file? (yes/no): ").strip().lower()
-                        confirm = 'yes'
-                        
-                        if confirm == 'yes':
-                            file_path = os.path.join(self.directory, filename)
-                            if os.path.isfile(file_path):
-                                with open(file_path, 'rb') as f:
-                                    file_content = f.read()
-                                self.client.send(json.dumps({
-                                    'type': 'file_delivery',
-                                    'to': requester,
-                                    'filename': filename,
-                                    'content': file_content.decode('utf-8')
-                                }).encode('utf-8'))
-                            else:
-                                print(f"File {filename} not found.")
-                        else:
-                            print("File transfer request denied.")
+                        file_path = os.path.join(self.directory, filename)
+                        if os.path.isfile(file_path):
+                            with open(file_path, 'rb') as f:
+                                file_content = f.read()
+                            self.client.send(json.dumps({
+                                'type': 'file_delivery',
+                                'to': requester,
+                                'filename': filename,
+                                'content': file_content.decode('utf-8')
+                            }).encode('utf-8'))
                     elif message['type'] == 'file_delivery':
                         filename = message['filename']
                         content = message['content']
@@ -78,28 +65,20 @@ class FileClient:
                         username = message['data']['username']
                         filename = message['data']['filename']
                         print(f"\n{username} has added a new file: {filename}")
-                        self.client_files.append(filename)
                     elif message['type'] == 'delete_file':
                         username = message['data']['username']
                         filename = message['data']['filename']
                         print(f"\n{username} has deleted the file: {filename}")
-                        if filename in self.client_files:
-                            self.client_files.remove(filename)
-                    elif message['type'] == 'disconnected':
-                        print("\nServer has confirmed your disconnection.")
-                        self.connected = False
-                        break
             except Exception as e:
-                if self.connected:   
-                    print(f"Error in receive_updates: {e}")
+                print(f"Error in receive_updates: {e}")
                 break
 
     def send_commands(self):
-        while self.connected:
+        while True:
             command = input("\nAvailable commands:\n - exit (to end the session)\n - request (to request a file)\n - directory (to see the directory)\n ")
             if command.lower() == 'exit':
                 self.client.send(json.dumps({'type': 'disconnect'}).encode('utf-8'))
-                self.connected = False
+                self.client.close()
                 break
             elif command.lower() == 'request':
                 owner = input("Enter the owner of the file: ")
@@ -124,50 +103,53 @@ class FileClient:
         }
         self.client.send(json.dumps(auth_data).encode('utf-8'))
 
+        # Start a thread to listen for updates from the server
         update_thread = threading.Thread(target=self.receive_updates)
         update_thread.daemon = True
         update_thread.start()
 
+        # Start a thread to handle user commands
         command_thread = threading.Thread(target=self.send_commands)
         command_thread.start()
 
-        command_thread.join()
-        self.connected = False
-        update_thread.join()
-        self.client.close()
-
     def start_monitoring(self):
-        event_handler = FileSystemEventHandler()
-        
-        def on_created(event):
-            if event.is_directory:
-                return
-            filename = os.path.basename(event.src_path)
-            self.client.send(json.dumps({
-                'type': 'add_file',
-                'filename': filename
-            }).encode('utf-8'))
-            print(f"File created: {filename}")
-            self.client_files.append(filename)
+        class Handler(FileSystemEventHandler):
+            def __init__(self, client):
+                self.client = client
 
-        def on_deleted(event):
-            if event.is_directory:
-                return
-            filename = os.path.basename(event.src_path)
-            self.client.send(json.dumps({
-                'type': 'delete_file',
-                'filename': filename
-            }).encode('utf-8'))
-            print(f"File deleted: {filename}")
-            if filename in self.client_files:
-                self.client_files.remove(filename)
+            def on_created(self, event):
+                if event.is_directory:
+                    return
+                filename = os.path.basename(event.src_path)
+                print(f"Detected file creation: {filename}")
+                self.client.send(json.dumps({
+                    'type': 'add_file',
+                    'filename': filename
+                }).encode('utf-8'))
+                print(f"File created: {filename}")
 
-        event_handler.on_created = on_created
-        event_handler.on_deleted = on_deleted
+            def on_deleted(self, event):
+                if event.is_directory:
+                    return
+                filename = os.path.basename(event.src_path)
+                print(f"Detected file deletion: {filename}")
+                self.client.send(json.dumps({
+                    'type': 'delete_file',
+                    'filename': filename
+                }).encode('utf-8'))
+                print(f"File deleted: {filename}")
 
+        event_handler = Handler(self.client)
         observer = Observer()
         observer.schedule(event_handler, self.directory, recursive=False)
         observer.start()
+
+        try:
+            while True:
+                pass
+        except KeyboardInterrupt:
+            observer.stop()
+        observer.join()
 
 if __name__ == "__main__":
     username = input("Enter your username: ")
