@@ -13,6 +13,7 @@ class FileClient:
         self.client.connect((host, port))
         self.client_files = []
         self.connected = True 
+
     def get_file_list(self):
         return [f for f in os.listdir(self.directory) if os.path.isfile(os.path.join(self.directory, f))]
 
@@ -45,16 +46,26 @@ class FileClient:
                     elif message['type'] == 'file_transfer_request':
                         filename = message['filename']
                         requester = message['from']
-                        file_path = os.path.join(self.directory, filename)
-                        if os.path.isfile(file_path):
-                            with open(file_path, 'rb') as f:
-                                file_content = f.read()
-                            self.client.send(json.dumps({
-                                'type': 'file_delivery',
-                                'to': requester,
-                                'filename': filename,
-                                'content': file_content.decode('utf-8')
-                            }).encode('utf-8'))
+                        
+                        print(f"\n{requester} has requested the file: {filename}")
+                        # confirm = input("Do you want to send this file? (yes/no): ").strip().lower()
+                        confirm = 'yes'
+                        
+                        if confirm == 'yes':
+                            file_path = os.path.join(self.directory, filename)
+                            if os.path.isfile(file_path):
+                                with open(file_path, 'rb') as f:
+                                    file_content = f.read()
+                                self.client.send(json.dumps({
+                                    'type': 'file_delivery',
+                                    'to': requester,
+                                    'filename': filename,
+                                    'content': file_content.decode('utf-8')
+                                }).encode('utf-8'))
+                            else:
+                                print(f"File {filename} not found.")
+                        else:
+                            print("File transfer request denied.")
                     elif message['type'] == 'file_delivery':
                         filename = message['filename']
                         content = message['content']
